@@ -653,6 +653,8 @@ def forward_email_to_mailbox(
 ) -> (bool, str):
     LOG.d("Forward %s -> %s -> %s", contact, alias, mailbox)
 
+    dmarc_failed = email_fails_dmarc(msg)
+
     if mailbox.disabled:
         LOG.d("%s disabled, do not forward")
         if should_ignore_bounce(envelope.mail_from):
@@ -856,6 +858,11 @@ def forward_email_to_mailbox(
         envelope.mail_options,
         envelope.rcpt_options,
     )
+
+    if dmarc_failed:
+        save_email()
+        send_notification(user)
+        raise FailedDmarcException()
 
     try:
         sl_sendmail(
@@ -2455,6 +2462,8 @@ class MailHandler:
                 msg[headers.TO],
             )
             return status.E213
+        except FailedDmarcException:
+            return status.E215
         except Exception as e:
             LOG.e(
                 "email handling fail with error:%s "
